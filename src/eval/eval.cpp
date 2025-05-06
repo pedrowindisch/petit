@@ -9,6 +9,32 @@
 #include "ast/list_expr.hpp"
 #include <iostream>
 
+NumberExpr* evalMathOp(const std::string& op, NumberExpr* left, NumberExpr* right) {
+    if (!left || !right) throw std::runtime_error("Invalid operands for math operation");
+    
+    if (op == "+") return new NumberExpr(left->getValue() + right->getValue());
+    if (op == "-") return new NumberExpr(left->getValue() - right->getValue());
+    if (op == "*") return new NumberExpr(left->getValue() * right->getValue());
+    if (op == "/") {
+        if (right->getValue() == 0) throw std::runtime_error("Division by zero");
+        return new NumberExpr(left->getValue() / right->getValue());
+    }
+    throw std::runtime_error("Unknown operator: " + op);
+}
+
+NumberExpr* evalBoolOp(const std::string& op, NumberExpr* left, NumberExpr* right) {
+    if (!left || !right) throw std::runtime_error("Invalid operands for comparison operation");
+
+    if (op == ">") return left->getValue() > right->getValue() ? new NumberExpr(1) : new NumberExpr(0);
+    if (op == ">=") return left->getValue() >= right->getValue() ? new NumberExpr(1) : new NumberExpr(0);
+    if (op == "<") return left->getValue() < right->getValue() ? new NumberExpr(1) : new NumberExpr(0);
+    if (op == "<=") return left->getValue() <= right->getValue() ? new NumberExpr(1) : new NumberExpr(0);
+    if (op == "==") return left->getValue() == right->getValue() ? new NumberExpr(1) : new NumberExpr(0);
+    if (op == "!=") return left->getValue() != right->getValue() ? new NumberExpr(1) : new NumberExpr(0);
+
+    throw std::runtime_error("Unknown operator: " + op);
+}
+
 Expr* eval(Expr* expr, Env& env) {
     if (auto* number = dynamic_cast<NumberExpr*>(expr)) return expr;
     if (auto* symbol = dynamic_cast<SymbolExpr*>(expr)) return nullptr;
@@ -19,51 +45,43 @@ Expr* eval(Expr* expr, Env& env) {
         auto* op = dynamic_cast<SymbolExpr*>(head);
         if (!op) throw std::runtime_error("First element must be an operator symbol");
 
-        if (op->getSymbol() == "+") {
-            double result = 0;
-            for (size_t i = 1; i < list->size(); ++i) {
-                auto val = eval(list->get(i), env);
-                auto* num = dynamic_cast<NumberExpr*>(val);
-                if (!num) throw std::runtime_error("Expected number in '+'");
-                result += num->getValue();
-            }
-
-            return new NumberExpr(result);
-        }
-
-        if (op->getSymbol() == "-") {
-            if (list->size() != 3) throw std::runtime_error("Subtraction requires exactly two operands");
-            auto* left = eval(list->get(1), env);
-            auto* right = eval(list->get(2), env);
-            auto* leftNum = dynamic_cast<NumberExpr*>(left);
-            auto* rightNum = dynamic_cast<NumberExpr*>(right);
-            if (!leftNum || !rightNum) throw std::runtime_error("Expected numbers in '-'");
-
-            return new NumberExpr(leftNum->getValue() - rightNum->getValue());
-        }
-
-        if (op->getSymbol() == "*") {
-            double result = 1;
-            for (size_t i = 1; i < list->size(); ++i) {
-                auto val = eval(list->get(i), env);
-                auto* num = dynamic_cast<NumberExpr*>(val);
-                if (!num) throw std::runtime_error("Expected number in '*'");
-                result *= num->getValue();
-            }
-
-            return new NumberExpr(result);
-        }
-
-        if (op->getSymbol() == "/") {
-            if (list->size() != 3) throw std::runtime_error("Division requires exactly two operands");
-            auto* left = eval(list->get(1), env);
-            auto* right = eval(list->get(2), env);
-            auto* leftNum = dynamic_cast<NumberExpr*>(left);
-            auto* rightNum = dynamic_cast<NumberExpr*>(right);
-            if (!leftNum || !rightNum) throw std::runtime_error("Expected numbers in '/'");
-            if (rightNum->getValue() == 0) throw std::runtime_error("Division by zero");
+        
+        std::string opSymbol = op->getSymbol();
+        
+        if (opSymbol == "+" || opSymbol == "-" || opSymbol == "*" || opSymbol == "/") {
+            if (list->size() != 3) throw std::runtime_error("Math operations require exactly 3 elements");
             
-            return new NumberExpr(leftNum->getValue() / rightNum->getValue());
+            auto* left = dynamic_cast<NumberExpr*>(eval(list->get(1), env));
+            auto* right = dynamic_cast<NumberExpr*>(eval(list->get(2), env));
+            if (!left || !right) throw std::runtime_error("Invalid operands for math operation");
+
+            return evalMathOp(opSymbol, left, right);
+        }
+
+        if (opSymbol == ">" || opSymbol == ">=" || opSymbol == "<" || opSymbol == "<=" || opSymbol == "==" || opSymbol == "!=") {
+            if (list->size() != 3) throw std::runtime_error("Comparison operations require exactly 3 elements");
+
+            auto* left = dynamic_cast<NumberExpr*>(eval(list->get(1), env));
+            auto* right = dynamic_cast<NumberExpr*>(eval(list->get(2), env));
+            if (!left || !right) throw std::runtime_error("Invalid operands for comparison operation");
+
+            return evalBoolOp(opSymbol, left, right);
+        }
+
+        if (op->getSymbol() == "if") {
+            if (list->size() != 4) throw std::runtime_error("If statement requires exactly 3 arguments");
+
+            auto* condition = eval(list->get(1), env);
+            auto* thenBranch = list->get(2);
+            auto* elseBranch = list->get(3);
+
+            auto* conditionValue = dynamic_cast<NumberExpr*>(condition);
+            if (!conditionValue) throw std::runtime_error("Condition must evaluate to a number");
+            if (conditionValue->getValue() != 0) return eval(thenBranch, env);
+            else return eval(elseBranch, env);
         }
     }
+
+    throw std::runtime_error("Unknown expression type");
+    return nullptr;
 }
